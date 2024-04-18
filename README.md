@@ -1,6 +1,7 @@
 # <p align="center">DunHuangStitch: Unsupervised Deep Image Stitching of Dunhuang Murals</p>
-<p align="center">Yuan Mei*, Lichun Yang*, Mengsi Wang*, Tianxiu Yu`, Kaijun Wu*</p>
+<p align="center">Yuan Mei*, Lichun Yang', Mengsi Wang*, Tianxiu Yu`, Kaijun Wu*</p>
 <p align="center">* the School of Electronic and Information Engineering, Lanzhou Jiaotong University</p>
+<p align="center">' the Key Lab of Opt-Electronic Technology and Intelligent Control of Ministry of Education, Lanzhou Jiaotong University</p>
 <p align="center">` Institute of Digitization of Cultural Relics, Dunhuang Research Institute</p>
 
 ## Dataset (Synthetic dunhuang dataset)
