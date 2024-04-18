@@ -5,10 +5,11 @@
 <p align="center">` Institute of Digitization of Cultural Relics, Dunhuang Research Institute</p>
 
 ## Dataset (Synthetic dunhuang dataset)
-We use the synthetic dunhuang dataset to train and evaluate our method. Please refer to [S-DunHuang]() for more details about this dataset.
+We use the synthetic dunhuang dataset to train and evaluate our method. To gain access to this dataset, please contact the author via email for specific details, as it is subject to private permissions requirements. 
+Certain portions of the data have previously been made available as open source. Please refer to the provided links for specific information. Please refer to [Dunhuang-inpainting](https://drive.google.com/file/d/1zqFX_gg6Pp4kf4PrmKB7NIojQDSxS3xr/view) for more details about this dataset.
 
 ## Dataset (Real dunhuang dataset)
-We use the real dunhuang dataset to train and evaluate our method. Please refer to [R-DunHuang]() for more details about this dataset.
+We use the real dunhuang dataset to train and evaluate our method. To gain access to this dataset, please contact the author via email for specific details, as it is subject to private permissions requirements. 
 
 ## Dataset (Natural scene dataset)
 We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDIS]() for more details about this dataset.
@@ -21,7 +22,7 @@ We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDI
 * scikit-image 0.15.0
 * tensorboard 2.9.0
 
-We implement this work with Ubuntu, 2080Ti, and CUDA11. Refer to [environment.yml]() for more details.
+We implement this work with Ubuntu, 2080Ti, and CUDA11. Refer to [environment.yml](https://github.com/nie-lang/UnsupervisedDeepImageStitching) for more details.
 
 #### How to run it
 Similar to UDIS, we also implement this solution in two stages:
