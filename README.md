@@ -3,9 +3,13 @@
 <p align="center">* the School of Electronic and Information Engineering, Lanzhou Jiaotong University</p>
 <p align="center">` Institute of Digitization of Cultural Relics, Dunhuang Research Institute</p>
 
-## Dataset (dunhuang)
+## Dataset (Synthetic dunhuang dataset)
+We use the synthetic dunhuang dataset to train and evaluate our method. Please refer to [S-DunHuang]() for more details about this dataset.
 
-## Dataset (UDIS-D)
+## Dataset (Real dunhuang dataset)
+We use the real dunhuang dataset to train and evaluate our method. Please refer to [R-DunHuang]() for more details about this dataset.
+
+## Dataset (Natural scene dataset)
 We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDIS]() for more details about this dataset.
 
 
