@@ -7,7 +7,7 @@
 ## Dataset (Synthetic dunhuang dataset)
 We use the synthetic dunhuang dataset to train and evaluate our method. To gain access to this dataset, please contact the author via email for specific details, as it is subject to private permissions requirements. 
 
-Certain portions of the data have previously been made available as open source. Please refer to the provided links for specific information. Please refer to [Dunhuang-inpainting](https://drive.google.com/file/d/1zqFX_gg6Pp4kf4PrmKB7NIojQDSxS3xr/view) for more details about this dataset.
+Some of the data has been previously made available as open source, please see the [links](https://drive.google.com/file/d/1zqFX_gg6Pp4kf4PrmKB7NIojQDSxS3xr/view) below for specific information.
 
 ## Dataset (Real dunhuang dataset)
 We use the real dunhuang dataset to train and evaluate our method. To gain access to this dataset, please contact the author via email for specific details, as it is subject to private permissions requirements. 
