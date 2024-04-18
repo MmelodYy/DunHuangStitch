@@ -3,7 +3,7 @@
 <p align="center">* the School of Electronic and Information Engineering, Lanzhou Jiaotong University</p>
 <p align="center">` Institute of Digitization of Cultural Relics, Dunhuang Research Institute</p>
 
-![image]()
+## Dataset (dunhuang)
 
 ## Dataset (UDIS-D)
 We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDIS]() for more details about this dataset.
@@ -16,7 +16,7 @@ We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDI
 * scikit-image 0.15.0
 * tensorboard 2.9.0
 
-We implement this work with Ubuntu, 3090Ti, and CUDA11. Refer to [environment.yml]() for more details.
+We implement this work with Ubuntu, 2080Ti, and CUDA11. Refer to [environment.yml]() for more details.
 
 #### How to run it
 Similar to UDIS, we also implement this solution in two stages:
@@ -28,5 +28,5 @@ Similar to UDIS, we also implement this solution in two stages:
 ## Meta
 If you have any questions about this project, please feel free to drop me an email.
 
-Yuan Mei -- 123
+Yuan Mei -- 2551161628@qq.com
 
