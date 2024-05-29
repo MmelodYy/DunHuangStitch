@@ -19,9 +19,13 @@ We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDI
 ## Code
 #### Requirement
 numpy==1.22.4
+
 opencv_python==4.5.5.64
+
 timm==0.9.6
+
 torch==1.12.1+cu116
+
 torchvision==0.13.1+cu116
 
 
