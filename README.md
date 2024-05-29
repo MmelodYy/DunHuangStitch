@@ -73,7 +73,7 @@ python train_fuse.py
 ```
 
 ### Testing 
-Our pretrained homography model can be available at [Baidu Cloud](https://pan.baidu.com/s/1uh6WRp3yWBCD0VPPiCa0eA)(Extraction code: 1234).
+Our pretrained homography model can be available at [Google Driver](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link).
 ## Caculate the aligment performance calculation
 ```
 python inference_homo.py
