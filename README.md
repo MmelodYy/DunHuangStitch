@@ -73,11 +73,11 @@ python train_fuse.py
 
 ## Testing 
 Our pretrained aligment model and fusion model can be available at [Google Drive](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link). This includes the pre-trained model on the Dunhuang dataset and the pre-trained model on the UDIS dataset.
-#### Caculate the aligment performance calculation
+#### Caculate the aligment performance
 ```
 python inference_homo.py
 ```
-#### Caculate the stitching performance calculation
+#### Caculate the stitching performance
 ```
 python inference_fuse.py
 ```
