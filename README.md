@@ -4,7 +4,7 @@
 <p align="center">' the Key Lab of Opt-Electronic Technology and Intelligent Control of Ministry of Education, Lanzhou Jiaotong University</p>
 <p align="center">` Institute of Digitization of Cultural Relics, Dunhuang Research Institute</p>
 
-![image](https://github.com/MmelodYy/DunHuangStitch/blob/main/network.png)
+![image](./network.png)
 ## Dataset (Synthetic dunhuang dataset)
 We use the synthetic dunhuang dataset to train and evaluate our method. To gain access to this dataset, please contact the author via email for specific details, as it is subject to private permissions requirements. 
 
