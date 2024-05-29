@@ -73,7 +73,7 @@ python train_fuse.py
 ```
 
 ### Testing 
-Our pretrained homography model can be available at [Google Driver](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link).
+Our pretrained homography model can be available at [Google Drive](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link).
 ## Caculate the aligment performance calculation
 ```
 python inference_homo.py
