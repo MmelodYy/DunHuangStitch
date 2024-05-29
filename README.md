@@ -55,7 +55,7 @@ python train_fuse.py
 ```
 
 ## Training on UDIS Dataset
-Replace 'from net.dunhuang128_homo_model import HModel' in train_homo_udis512.py, inference_homo_output.py, train_fuse.py with 'from net.udis512_homo_mesh_model import HModel'. Similarly, the parser portion of the main function is replaced with the parameters required for training on the UDIS dataset. Also, change the parameters in the utils/constant.py file as needed.
+Replace 'from net.dunhuang128_homo_model import HModel' in train_homo_udis512.py, inference_homo_output.py, train_fuse.py with 'from net.udis512_homo_mesh_model import HModel'. Similarly, the parser portion of the main function is replaced with the parameters required for training on the UDIS dataset. Also, change the parameters in the 'utils/constant.py' file as needed.
 #### Step 1:Unsupervised aligment
 ```
 python train_homo_udis512.py
