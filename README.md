@@ -18,22 +18,70 @@ We use the UDIS-D dataset to train and evaluate our method. Please refer to [UDI
 
 ## Code
 #### Requirement
-* numpy 1.19.5
-* pytorch 1.7.1
-* scikit-image 0.15.0
-* tensorboard 2.9.0
-
-We implement this work with Ubuntu, 2080Ti, and CUDA11. Refer to [environment.yml]() for more details.
-
-#### How to run it
-Similar to UDIS, we also implement this solution in two stages:
-* Stage 1 (unsupervised warp): please refer to  [Warp/readme.md]().
-* Stage 2 (unsupervised composition): please refer to [Composition/readme.md]().
+numpy==1.22.4
+opencv_python==4.5.5.64
+timm==0.9.6
+torch==1.12.1+cu116
+torchvision==0.13.1+cu116
 
 
+#### Training on Dunhuang Synthetic Dataset
+### Training 
+##  Step 1:Dataset preparation
+Generate the dunhuang synthetic dataset. In our experiment, we generate 8,051 for training and 1,714 for testing.
+
+Modidy the 'sythetic_dh_dataset.py' to set the 'raw_image_path'/'generate_image_path' and create the corresponding folders. Then, run this script:
+```
+python sythetic_dh_dataset.py
+```
+
+## Step 2:Unsupervised aligment
+```
+python train_homo_dunhuang128.py
+```
+
+## Step 3:Generate the coarsely aligned images and content masks
+```
+python inference_homo_output.py
+```
+
+## Step 4:Unsupervised fusion
+```
+python train_fuse.py
+```
+
+#### Training on UDIS Dataset
+Replace 'from net.dunhuang128_homo_model import HModel' in train_homo_udis512.py, inference_homo_output.py, train_fuse.py with 'from net.udis512_homo_mesh_model import HModel'. Similarly, the parser portion of the main function is replaced with the parameters required for training on the UDIS dataset. Also, change the parameters in the utils/constant.py file as needed.
+## Step 1:Unsupervised aligment
+```
+python train_homo_udis512.py
+```
+
+## Step 2:Generate the coarsely aligned images and content masks
+```
+python inference_homo_output.py
+```
+
+## Step 3:Unsupervised fusion
+```
+python train_fuse.py
+```
+
+### Testing 
+Our pretrained homography model can be available at [Baidu Cloud](https://pan.baidu.com/s/1uh6WRp3yWBCD0VPPiCa0eA)(Extraction code: 1234).
+## Caculate the aligment performance calculation
+```
+python inference_homo.py
+```
+## Caculate the stitching performance calculation
+```
+python inference_fuse.py
+```
 
 ## Meta
 If you have any questions about this project, please feel free to drop me an email.
 
 Yuan Mei -- 2551161628@qq.com
+
+
 
