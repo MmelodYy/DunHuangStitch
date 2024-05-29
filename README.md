@@ -73,7 +73,7 @@ python train_fuse.py
 ```
 
 ### Testing 
-Our pretrained homography model can be available at [Google Drive](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link).
+Our pretrained aligment model and fusion model can be available at [Google Drive](https://drive.google.com/drive/folders/12fLswn9o8FVLoqewfHIWazhphBY3LD4h?usp=drive_link). This includes the pre-trained model on the Dunhuang dataset and the pre-trained model on the UDIS dataset.
 ## Caculate the aligment performance calculation
 ```
 python inference_homo.py
