@@ -35,7 +35,7 @@ torchvision==0.13.1+cu116
 ##  Step 1:Dataset preparation
 Generate the dunhuang synthetic dataset. In our experiment, we generate 8,051 for training and 1,714 for testing.
 
-Modidy the 'sythetic_dh_dataset.py' to set the 'raw_image_path'/'generate_image_path' and create the corresponding folders. Then, run this script:
+Modify the 'sythetic_dh_dataset.py' to set the 'raw_image_path'/'generate_image_path' and create the corresponding folders. Then, run this script:
 ```
 python sythetic_dh_dataset.py
 ```
