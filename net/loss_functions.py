@@ -278,12 +278,44 @@ def boundary_extraction(mask, in_channel = 1, out_channel = 1):
 def intensity_loss(gen_frames, gt_frames, l_num=1):
     return torch.abs((gen_frames - gt_frames) ** l_num)
 
+# class FuseLoss(nn.Module):
+#     def __init__(self):
+#         super(FuseLoss, self).__init__()
+#         self.ssim_loss = SSIM()
+#         self.l1_loss = nn.L1Loss()
+#         self.seam_extractor = SeamMaskExtractor(device)
+
+#     def __call__(self, image1, image2, mask1,mask2, stitched_img, seg1, seg2):
+#         a = 10000
+#         b = 1000
+#         eps = 0.01
+#         mask1, mask2 = (mask1 > eps).int().type_as(image1), (mask2 > eps).int().type_as(image1)  # binarize
+#         m1 = mask1 * self.seam_extractor(mask2[:,0,:,:].float().unsqueeze(1))
+#         m2 = mask2 * self.seam_extractor(mask1[:,0,:,:].float().unsqueeze(1))
+
+#         l_boundary1 = intensity_loss(stitched_img*m1 , image1*m1, l_num=1)
+#         l_boundary2 = intensity_loss(stitched_img*m2 , image2*m2, l_num=1)
+#         l_boundary = torch.mean(l_boundary1) + torch.mean(l_boundary2)
+
+#         Id = intensity_loss(image1 , image2, l_num=2)
+#         ld1 =  intensity_loss(seg1[:,:,0:-1,:] , seg1[:,:,1:,:] ,l_num=1) * (Id[:,:,0:-1,:] + Id[:,:,1:,:])
+#         ld2 = intensity_loss(seg1[:,:,:,0:-1] , seg1[:,:,:,1:] ,l_num=1) * (Id[:,:,:,0:-1] + Id[:,:,:,1:])
+#         l_d = torch.mean(ld1) + torch.mean(ld2)
+
+#         Is1 = intensity_loss(seg1[:,:,0:-1,:] , seg1[:,:,1:,:] ,l_num=1) * intensity_loss(stitched_img[:,:,0:-1,:], stitched_img[:,:,1:,:], l_num=1)
+#         Is2 = intensity_loss(seg1[:,:,:,0:-1] , seg1[:,:,:,1:] ,l_num=1) * intensity_loss(stitched_img[:,:,:,0:-1], stitched_img[:,:,:,1:], l_num=1)
+#         l_s = torch.mean(Is1) + torch.mean(Is2)
+
+#         l_total = a*l_boundary + b*(l_d + l_s)
+#         return l_total,a*l_boundary,b*(l_d + l_s)
+
 class FuseLoss(nn.Module):
     def __init__(self):
         super(FuseLoss, self).__init__()
         self.ssim_loss = SSIM()
         self.l1_loss = nn.L1Loss()
         self.seam_extractor = SeamMaskExtractor(device)
+        # self.grad_extractor = GradfExtractor(device)
 
     def __call__(self, image1, image2, mask1,mask2, stitched_img, seg1, seg2):
         a = 10000
@@ -302,11 +334,24 @@ class FuseLoss(nn.Module):
         ld2 = intensity_loss(seg1[:,:,:,0:-1] , seg1[:,:,:,1:] ,l_num=1) * (Id[:,:,:,0:-1] + Id[:,:,:,1:])
         l_d = torch.mean(ld1) + torch.mean(ld2)
 
+        # print("l_d:",l_d.max())
+
         Is1 = intensity_loss(seg1[:,:,0:-1,:] , seg1[:,:,1:,:] ,l_num=1) * intensity_loss(stitched_img[:,:,0:-1,:], stitched_img[:,:,1:,:], l_num=1)
         Is2 = intensity_loss(seg1[:,:,:,0:-1] , seg1[:,:,:,1:] ,l_num=1) * intensity_loss(stitched_img[:,:,:,0:-1], stitched_img[:,:,:,1:], l_num=1)
         l_s = torch.mean(Is1) + torch.mean(Is2)
 
-        l_total = a*l_boundary + b*(l_d + l_s)
-        return l_total,a*l_boundary,b*(l_d + l_s)
+        edge1 = self.seam_extractor(image1[:,0,:,:].float().unsqueeze(1),isEdge=True)/255. #.squeeze(1).permute(1,2,0).cpu().detach().numpy()
+        edge2 = self.seam_extractor(image2[:,0,:,:].float().unsqueeze(1),isEdge=True)/255. #.squeeze(1).permute(1,2,0).cpu().detach().numpy()
+
+        Le = intensity_loss(edge1, edge2, l_num=2) * 10
+        # print(Id.shape,Id.max())
+        # print(Le.shape,Le.max())
+        Is1 = intensity_loss(seg1[:,:,0:-1,:] , seg1[:,:,1:,:] ,l_num=1) * (Le[:,:,0:-1,:] + Le[:,:,1:,:])
+        Is2 = intensity_loss(seg1[:,:,:,0:-1] , seg1[:,:,:,1:] ,l_num=1) * (Le[:,:,:,0:-1] + Le[:,:,:,1:])
+        l_s2 = torch.mean(Is1) + torch.mean(Is2)
+
+        l_total = a*l_boundary + b*(l_d + l_s + l_s2)
+        # l_total = a*l_boundary + b*(l_d)
+        return l_total,a*l_boundary,b*(l_d + l_s + l_s2)
 
 
