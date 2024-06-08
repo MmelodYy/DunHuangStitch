@@ -98,10 +98,10 @@ class HomoTrainData(nn.Module):
             transforms.ToTensor(),
         ])
         self._origin_transform_aug = transforms.Compose([
-            transforms.ColorJitter(brightness=[0.01,0.05]),
-            transforms.ColorJitter(contrast=[0.3,0.6]),
-            transforms.ColorJitter(saturation=[0.2,0.5]),
-            transforms.ColorJitter(hue=[-0.1,0.2]),
+            #transforms.ColorJitter(brightness=[0.01,0.05]),
+            #transforms.ColorJitter(contrast=[0.3,0.6]),
+            #transforms.ColorJitter(saturation=[0.2,0.5]),
+            #transforms.ColorJitter(hue=[-0.1,0.2]),
             transforms.Resize([self.img_h, self.img_w]),
             transforms.ToTensor(),
         ])
