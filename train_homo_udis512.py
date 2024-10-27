@@ -126,7 +126,6 @@ def train(model,saveModelName,criterion,optimizer,scheduler,start_epochs=0,end_e
         # print("epoch:",epoch,"lr:",scheduler.get_last_lr())
         loss_history.append(each_batch_all_loss)
 
-        # Meiyuan is hadnsome!
         if epoch % 10 == 0 or (epoch + 1) >= (end_epochs - 10):
             save_path = saveModelName.split('/')[0] + '/'
             if not os.path.exists(save_path):
