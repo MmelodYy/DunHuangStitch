@@ -106,7 +106,6 @@ def train(model,saveModelName,criterion,optimizer,scheduler,start_epochs=0,end_e
         # print("epoch:",epoch,"lr:",scheduler.get_last_lr())
         loss_history.append(each_batch_all_loss)
 
-        # Meiyuan is hadnsome!
         if epoch % 10 == 0 or (epoch + 1) >= (end_epochs - 10):
             save_path = saveModelName.split('/')[0] + '/'
             if not os.path.exists(save_path):
@@ -181,7 +180,7 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lrScheduler)
     # resume training
     if args.resume:
-        for i in range(0, (args.start_epochs + 1)):
+        for i in range(0, (args.resume_epoch + 1)):
             scheduler.step()
         args.start_epochs = args.resume_epoch
         load_path = args.save_model_name + "_" + "epoch" + str(args.resume_epoch) + ".pkl"
