@@ -202,7 +202,7 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lrScheduler)
     # resume training
     if args.resume:
-        for i in range(0, (args.start_epochs + 1)):
+        for i in range(0, (args.resume_epoch + 1)):
             scheduler.step()
         args.start_epochs = args.resume_epoch
         load_path = args.save_model_name + "_" + "epoch" + str(args.resume_epoch) + ".pkl"
