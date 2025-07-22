@@ -7,9 +7,25 @@ from timm.models.layers import DropPath, to_3tuple, trunc_normal_
 from utils.tensorDLT import solve_DLT
 from utils.tf_spatial_transform import STN
 from utils.output_tensorDLT import solve_Size_DLT
-from utils.output_tf_spatial_transform import Stitching_Domain_STN
+from utils.output_tf_spatial_transform import Stitching_Domain_STN  #,Stitching_Domain_STN2
 
-def autopad(k, p=None, d=1):  # kernel, padding, dilation
+def autopad(k):
+    p = k // 2 if isinstance(k, int) else [x // 2 for x in k]
+    return p
+
+class DoubleConv(nn.Module):
+    def __init__(self,inplanes,outplanes,k,s,p):
+        super(DoubleConv, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(inplanes,outplanes,kernel_size=k,stride=s,padding=p),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(outplanes,outplanes,kernel_size=k,stride=s,padding=p),
+            nn.ReLU(inplace=True),
+        )
+    def forward(self,x):
+        return self.conv(x)
+
+def autopad2(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
     if d > 1:
         k = d * (k - 1) + 1 if isinstance(k, int) else [d * (x - 1) + 1 for x in k]  # actual kernel-size
@@ -31,6 +47,45 @@ class Conv(nn.Module):
 
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
+        # x = self.conv(x)
+        # x = self.act(x)
+        # # norm1
+        # Wh, Ww = x.size(2), x.size(3)
+        # x = x.flatten(2).transpose(1, 2)
+        # x = self.norm1(x)
+        # x = x.transpose(1, 2).view(-1, self.out_dim, Wh, Ww)
+        # return x
+
+class Bottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):  # ch_in, ch_out, shortcut, groups, kernels, expand
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, k[0], 1)
+        self.cv2 = Conv(c_, c2, k[1], 1, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+class C2f(nn.Module):
+    # CSP Bottleneck with 2 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(Bottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+
+    def forward(self, x):
+        y = list(self.cv1(x).chunk(2, 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
+
+    def forward_split(self, x):
+        y = list(self.cv1(x).split((self.c, self.c), 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
 
 
 def extract_patches(x, kernel=3, stride=1):
@@ -147,6 +202,15 @@ def cost_volume(x1, x2, search_range, normBoth=False, fast=True):
     cost_vol = F.leaky_relu(cost_vol, 0.1)
     return cost_vol
 
+def cost_volume2(x1, x2, search_range, normBoth=False, fast=True):
+    # print(x1.shape)
+    cost_vol = torch.cat([x1,x2],dim=1)
+    gap = x1-x2
+    # print(gap.shape)
+    cost_vol = torch.cat([cost_vol,gap],dim=1)
+    return cost_vol
+
+
 
 def window_partition(x, window_size):
     B, H, W, C = x.shape
@@ -260,6 +324,35 @@ class WindowAttention(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
+class Partial_conv3(nn.Module):
+
+    def __init__(self, dim, n_div=4, forward='split_cat'):
+        super().__init__()
+        self.dim_conv3 = dim // n_div
+        self.dim_untouched = dim - self.dim_conv3
+        self.partial_conv3 = nn.Conv2d(self.dim_conv3, self.dim_conv3, 3, 1, 1, bias=False)
+
+        if forward == 'slicing':
+            self.forward = self.forward_slicing
+        elif forward == 'split_cat':
+            self.forward = self.forward_split_cat
+        else:
+            raise NotImplementedError
+
+    def forward_slicing(self, x):
+        # only for inference
+        x = x.clone()   # !!! Keep the original input intact for the residual connection later
+        x[:, :self.dim_conv3, :, :] = self.partial_conv3(x[:, :self.dim_conv3, :, :])
+
+        return x
+
+    def forward_split_cat(self, x):
+        # for training/inference
+        x1, x2 = torch.split(x, [self.dim_conv3, self.dim_untouched], dim=1)
+        x1 = self.partial_conv3(x1)
+        x = torch.cat((x1, x2), 1)
+
+        return x
 
 class MSABlock(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
@@ -285,7 +378,10 @@ class MSABlock(nn.Module):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
-
+        # self.dwconv = nn.Sequential(
+        #     Partial_conv3(dim),
+        #     nn.Conv2d(dim, dim, 1, bias=False),
+        # )
 
     def forward(self, x, mask_matrix):
 
@@ -482,8 +578,57 @@ class Focus(nn.Module):
         return torch.cat([x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]], 1)
 
 
-class PatchEmbed(nn.Module):
+# class PatchEmbed(nn.Module):
 
+#     def __init__(self, patch_size=4, in_chans=4, embed_dim=96, norm_layer=None):
+#         super().__init__()
+#         self.patch_size = patch_size
+
+#         self.in_chans = in_chans
+#         self.embed_dim = embed_dim
+#         self.num_block = int(np.log2(patch_size[0]))
+#         self.project_block = []
+#         self.dim = [int(embed_dim) // (2 ** i) for i in range(self.num_block)]
+#         self.dim.append(in_chans)
+#         self.dim = self.dim[::-1]  # in_ch, embed_dim/2, embed_dim or in_ch, embed_dim/4, embed_dim/2, embed_dim
+#         # print("dim:",len(self.dim))
+#         # for x in self.dim:
+#         #     print(x)
+#         # for i in range(self.num_block)[:-1]:
+#         #     self.project_block.append(project(self.dim[i], self.dim[i + 1], 2, 1, nn.GELU, nn.LayerNorm, False))
+#         # self.project_block.append(project(self.dim[-2], self.dim[-1], 2, 1, nn.GELU, nn.LayerNorm, True))
+#         # self.project_block.append(project(self.dim[0], self.dim[-1], 2, 1, nn.GELU, nn.LayerNorm, True))
+#         # self.project_block = nn.ModuleList(self.project_block)
+#         self.focus = Focus(self.dim[0], self.dim[-1], 3, 1)
+
+#         # if norm_layer is not None:
+#         #     self.norm = norm_layer(embed_dim)
+#         # else:
+#         #     self.norm = None
+
+#     def forward(self, x):
+#         # """Forward function."""
+#         # # padding
+#         # _, _, H, W = x.size()
+#         # if H % self.patch_size[0] != 0:
+#         #     x = F.pad(x, (0, self.patch_size[0] - W % self.patch_size[0]))
+#         # if H % self.patch_size[1] != 0:
+#         #     x = F.pad(x, (0, 0, 0, self.patch_size[1] - H % self.patch_size[1]))
+#         # # print("x:",x.shape)
+#         # for blk in self.project_block:
+#         #     x = blk(x)
+#         # # print("x2:", x.shape)
+#         # if self.norm is not None:
+#         #     Wh, Ww = x.size(2), x.size(3)
+#         #     x = x.flatten(2).transpose(1, 2)
+#         #     x = self.norm(x)
+#         #     x = x.transpose(1, 2).view(-1, self.embed_dim, Wh, Ww)
+#         # print("x3:", x.shape)
+#         x = self.focus(x)
+#         # print("x3:", x.shape)
+#         return x
+
+class PatchEmbed(nn.Module):
     def __init__(self, patch_size=4, in_chans=4, embed_dim=96, norm_layer=None):
         super().__init__()
         self.patch_size = patch_size
@@ -496,11 +641,34 @@ class PatchEmbed(nn.Module):
         self.dim.append(in_chans)
         self.dim = self.dim[::-1]  # in_ch, embed_dim/2, embed_dim or in_ch, embed_dim/4, embed_dim/2, embed_dim
 
-        self.focus = Focus(self.dim[0], self.dim[-1], 3, 1)
+        for i in range(self.num_block)[:-1]:
+            self.project_block.append(project(self.dim[i], self.dim[i + 1], 2, 1, nn.GELU, nn.LayerNorm, False))
+        self.project_block.append(project(self.dim[-2], self.dim[-1], 2, 1, nn.GELU, nn.LayerNorm, True))
+        # self.project_block.append(Focus(self.dim[-2], self.dim[-1], 3, 1))
+        self.project_block = nn.ModuleList(self.project_block)
 
+        if norm_layer is not None:
+            self.norm = norm_layer(embed_dim)
+        else:
+            self.norm = None
 
     def forward(self, x):
-        x = self.focus(x)
+        """Forward function."""
+        # padding
+        _, _, H, W = x.size()
+        if H % self.patch_size[0] != 0:
+            x = F.pad(x, (0, self.patch_size[0] - W % self.patch_size[0]))
+        if H % self.patch_size[1] != 0:
+            x = F.pad(x, (0, 0, 0, self.patch_size[1] - H % self.patch_size[1]))
+        for blk in self.project_block:
+            x = blk(x)
+
+        if self.norm is not None:
+            Wh, Ww = x.size(2), x.size(3)
+            x = x.flatten(2).transpose(1, 2)
+            x = self.norm(x)
+            x = x.transpose(1, 2).view(-1, self.embed_dim, Wh, Ww)
+
         return x
 
 
@@ -546,10 +714,10 @@ class encoder(nn.Module):
             layer = BasicLayer(
                 dim=int(embed_dim * 2 ** i_layer),
                 input_resolution=(
-                    pretrain_img_size[0] // patch_size[0] // 2 ** (i_layer-1),
-                    pretrain_img_size[1] // patch_size[1] // 2 ** (i_layer-1)),
-                    # pretrain_img_size[0] // patch_size[0] // 2 ** (i_layer),
-                    # pretrain_img_size[1] // patch_size[1] // 2 ** (i_layer)),
+                    # pretrain_img_size[0] // patch_size[0] // 2 ** (i_layer-1),
+                    # pretrain_img_size[1] // patch_size[1] // 2 ** (i_layer-1)),
+                    pretrain_img_size[0] // patch_size[0] // 2 ** (i_layer),
+                    pretrain_img_size[1] // patch_size[1] // 2 ** (i_layer)),
                 depth=depths[i_layer],
                 num_heads=num_heads[i_layer],
                 window_size=window_size[i_layer],
@@ -621,6 +789,18 @@ class Block(nn.Module):
     def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, input_resolution=None, num_heads=None,
                  window_size=None, i_block=None, qkv_bias=None, qk_scale=None):
         super().__init__()
+        # self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)  # depthwise conv
+        # self.dwconv = nn.Sequential(
+        #     Partial_conv3(dim),
+        #     nn.Conv2d(dim, dim, 1, bias=False),
+        # )
+        # self.norm = LayerNorm(dim, eps=1e-6)
+        # self.pwconv1 = nn.Linear(dim, 4 * dim)  # pointwise/1x1 convs, implemented with linear layers
+        # self.act = nn.GELU()
+        # self.pwconv2 = nn.Linear(4 * dim, dim)
+        # self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)),
+        #                           requires_grad=True) if layer_scale_init_value > 0 else None
+        # self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.blocks_tr = MSABlock(
             dim=dim,
@@ -635,6 +815,20 @@ class Block(nn.Module):
             drop_path=drop_path)
 
     def forward(self, x, mask):
+        # input = x
+        # x = self.dwconv(x)
+        # x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+        # x = self.norm(x)
+        #
+        # x = self.pwconv1(x)
+        # x = self.act(x)
+        # x = self.pwconv2(x)
+        # if self.gamma is not None:
+        #     x = self.gamma * x
+        # x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
+        #
+        # x = input + self.drop_path(x)
+
         x = x.permute(0, 2, 3, 1).contiguous()
         # print(x.shape,mask.shape)
         x = self.blocks_tr(x, mask)
@@ -681,6 +875,44 @@ class FeatureExtractor(nn.Module):
     def forward(self, x):
         skips = self.model_down(x)
         return skips
+
+class AdaptiveFM(nn.Module):
+    def __init__(self, n_channels, kernel_size=3):
+        super(AdaptiveFM, self).__init__()
+        self.conv = nn.Conv2d(n_channels, n_channels, kernel_size=kernel_size, padding=kernel_size // 2,
+                              groups=n_channels)
+
+    def forward(self, x):
+        return self.conv(x) + x
+
+# class RegressionNet(nn.Module):
+#     def __init__(self,inplanes=64, hdim =64,fIndim=256,downSampleTimes=2):
+#         super(RegressionNet, self).__init__()
+#         self.conv = nn.Sequential(
+#             Conv(inplanes, hdim, 3, 1),
+#             Conv(hdim, hdim, 3, s=2),
+#             # C2f(hdim, hdim),
+#             Conv(hdim, hdim, 3, s=2 if downSampleTimes >= 2 else 1),
+#             # C2f(hdim, hdim),
+#             # Conv(hdim, hdim, 3, 1),
+#             Conv(hdim, hdim, 3, s=2 if downSampleTimes >= 1 else 1),
+#             # Conv(hdim, hdim, 3, 1),
+#             AdaptiveFM(hdim, 3)
+#         )
+#         self.fc = nn.Sequential(
+#             nn.Flatten(),
+#             nn.Linear(fIndim,1024),
+#             nn.SiLU(inplace=True),
+#             # nn.Dropout(0.5),
+#             nn.Linear(1024,8)
+#         )
+#
+#     def forward(self,x):
+#         # print(x.shape)
+#         # b,_,_,_ = x.shape
+#         x = self.conv(x)
+#         x = self.fc(x)
+#         return x
 
 
 class RegressionNet(nn.Module):
@@ -777,6 +1009,77 @@ class RegressionNet(nn.Module):
         return x
 
 
+# class EMA(nn.Module):
+#     def __init__(self, channels):
+#         super(EMA, self).__init__()
+#         self.groups = channels
+#         assert channels // self.groups > 0
+#         self.softmax = nn.Softmax(-1)
+#         self.agp = nn.AdaptiveAvgPool2d((1, 1))
+#         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+#         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+#         self.gn = nn.GroupNorm(channels // self.groups, channels // self.groups)
+#         self.conv1x1 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=1, stride=1, padding=0)
+#         self.conv3x3 = nn.Conv2d(channels // self.groups, channels // self.groups, kernel_size=3, stride=1, padding=1)
+#
+#     def forward(self, x):
+#         b, c, h, w = x.size()
+#         group_x = x.reshape(b * self.groups, -1, h, w)  # b*g,c//g,h,w
+#         x_h = self.pool_h(group_x)
+#         x_w = self.pool_w(group_x).permute(0, 1, 3, 2)
+#         hw = self.conv1x1(torch.cat([x_h, x_w], dim=2))
+#         x_h, x_w = torch.split(hw, [h, w], dim=2)
+#         x1 = self.gn(group_x * x_h.sigmoid() * x_w.permute(0, 1, 3, 2).sigmoid())
+#         x2 = self.conv3x3(group_x)
+#         x11 = self.softmax(self.agp(x1).reshape(b * self.groups, -1, 1).permute(0, 2, 1))
+#         x12 = x2.reshape(b * self.groups, c // self.groups, -1)  # b*g, c//g, hw
+#         x21 = self.softmax(self.agp(x2).reshape(b * self.groups, -1, 1).permute(0, 2, 1))
+#         x22 = x1.reshape(b * self.groups, c // self.groups, -1)  # b*g, c//g, hw
+#         weights = (torch.matmul(x11, x12) + torch.matmul(x21, x22)).reshape(b * self.groups, 1, h, w)
+#         return (group_x * weights.sigmoid()).reshape(b, c, h, w)
+
+class EMA2(nn.Module):
+    def __init__(self, channels):
+        super(EMA2, self).__init__()
+        self.groups = channels
+        assert channels // self.groups > 0
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        self.intra_cross = nn.Sequential(
+            nn.Conv2d(2*channels, 2*channels, 1, 1, 0),
+            # nn.BatchNorm2d(2*channels),
+            nn.ReLU()
+        )
+        self.nonLinear_h = nn.Sequential(
+            nn.Conv2d(channels,channels,1,1,0),
+            # nn.BatchNorm2d(channels),
+            nn.ReLU()
+        )
+        self.nonLinear_w = nn.Sequential(
+            nn.Conv2d(channels,channels,1,1,0),
+            # nn.BatchNorm2d(channels),
+            nn.ReLU()
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+        # intra cross
+        hw = self.intra_cross(torch.cat([x_h, x_w], dim=1))
+        x_h, x_w = torch.split(hw, [c,c], dim=1)
+        x_w = x_w.permute(0, 1, 3, 2)
+        # intre cross
+        x_h1 = self.nonLinear_h(x_h)
+        x_w1 = self.nonLinear_w(x_w)
+        x_h_out = x_h1 * x_w
+        x_w_out = x_w1 * x_h
+        out = x_h_out + x_w_out
+        att_weight = self.sigmoid(out)
+        return att_weight
+
+
 class AttentionCostVolume(nn.Module):
     def __init__(self,search_range=8):
         super(AttentionCostVolume, self).__init__()
@@ -804,15 +1107,30 @@ class AttentionCostVolume(nn.Module):
 class HModel(nn.Module):
     def __init__(self,inplanes):
         super(HModel, self).__init__()
+        # self.ShareFeature = nn.Sequential(
+        #     nn.Conv2d(inplanes, 16, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(16, eps=0.001, momentum=0.03),
+        #     nn.SiLU(inplace=True),
+        #
+        #     nn.Conv2d(16, 32, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(32, eps=0.001, momentum=0.03),
+        #     nn.SiLU(inplace=True),
+        #
+        #     nn.Conv2d(32, 3, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(3, eps=0.001, momentum=0.03),
+        #     nn.SiLU(inplace=True),
+        # )
+
+        # 特征抽取器！！！！！！！！！
         self.feature_extractor =  FeatureExtractor(num_input_channels=inplanes,
-                 embedding_dim=16,
-                 depths=[2, 2, 2],
-                 num_heads=[8, 8, 8],
+                 embedding_dim=32,
+                 depths=[2, 2, 2, 2],
+                 num_heads=[8, 8, 8, 8],
                  num_classes=2,
-                 crop_size=128,
+                 crop_size=512,
                  patch_size=4,
-                 window_size=[4, 4, 4],
-                 out_indices=(0, 1, 2))
+                 window_size=[4, 4, 4, 4],
+                 out_indices=(0, 1, 2, 3))
         print("---------------reg1----------------------")
         self.corr1 = AttentionCostVolume(16)
         self.reg1 = RegressionNet(pretrain_img_size=[16, 16],
@@ -840,7 +1158,12 @@ class HModel(nn.Module):
                  window_size=[4, 4, 4],
                  out_indices=(0, 1, 2),
                  fIndim=1024)
-
+        # self.reg1 = RegressionNet(inplanes=192,hdim=64,fIndim=4096,downSampleTimes=0)
+        # self.reg2 = RegressionNet(inplanes=96,hdim=64,fIndim=4096,downSampleTimes=1)
+        # self.reg3 = RegressionNet(inplanes=48,hdim=64,fIndim=4096,downSampleTimes=2)
+        # self.reg1 = RegressionNet(1089, 64, fIndim=256)
+        # self.reg2 = RegressionNet(289, 64, fIndim=1024)
+        # self.reg3 = RegressionNet(81, 64, fIndim=4096)
         self.DLT_solver = solve_DLT()
         self.DLT_Size_solver = solve_Size_DLT()
 
@@ -863,6 +1186,8 @@ class HModel(nn.Module):
 
     def forward_once(self, x1, x2):
         b, c, _, _ = x1.shape
+        # x1 = self.ShareFeature(x1)
+        # x2 = self.ShareFeature(x2)
         f1 = self.feature_extractor(x1)
         f2 = self.feature_extractor(x2)
         # print("feature1:", f1[-1].shape)
@@ -871,7 +1196,7 @@ class HModel(nn.Module):
         ############# regressionNet 1 #############
         search_range = 3
         patch_size = 32.
-        stride = 4.
+        stride = 16.
         # global_correlation = cost_volume(f1[-1],f2[-1], search_range,normBoth=True)
         # global_correlation = CCL(f1[-1], f2[-1], normBoth=True)
         global_correlation = self.corr1(f1[-1], f2[-1], normBoth=True)
@@ -883,7 +1208,7 @@ class HModel(nn.Module):
         ############# regressionNet 2 #############
         search_range = 3
         patch_size = 64.
-        stride = 2.
+        stride = 8.
         # local_correlation_2 = cost_volume(f1[-2], feature2_warp, search_range,normBoth=False)
         # local_correlation_2 = CCL(f1[-2], feature2_warp, normBoth=False)
         local_correlation_2 = self.corr2(f1[-2], feature2_warp, normBoth=False)
@@ -902,7 +1227,7 @@ class HModel(nn.Module):
         net3_f = net3_fc2.unsqueeze(2)
         return net1_f, net2_f, net3_f
 
-    def output_H_estimator(self,or_input1, or_input2,input1, input2,size,imgsz=128.):
+    def output_H_estimator(self,or_input1, or_input2,input1, input2,size,imgsz=512.):
         net1_f, net2_f, net3_f = self.forward_once(input1, input2)
         shift = net1_f + net2_f + net3_f
         # print(shift)
@@ -924,7 +1249,64 @@ class HModel(nn.Module):
         coarsealignment = Stitching_Domain_STN(torch.cat([or_input1, or_input2],dim=1), H, size, resized_shift)
         return coarsealignment
 
-    def forward(self,inputs_aug1,inputs_aug2, input1,inputs2, patch_size=128.):
+    # def output_H_estimator(self,or_input1, or_input2,input1, input2,size,imgsz=512.):
+    #     net1_f, net2_f, net3_f = self.forward_once(input1, input2)
+    #     shift = net1_f + net2_f + net3_f
+    #     # print(shift)
+    #     # print(size.shape)
+    #     # print(shift.shape)
+    #     size = torch.tensor([512,512]).unsqueeze(0).to(shift.device)
+    #     size = size.unsqueeze(2)
+    #     size_tmp = torch.cat([size, size, size, size], dim=1) / imgsz
+    #     resized_shift = torch.mul(shift, size_tmp)
+    #     # print(size)
+    #     # print("size:", size.shape)
+    #     # print("shift:", shift.shape)
+    #     # print("size_tmp:",size_tmp.shape)
+    #     # print("resized_shift:", resized_shift.shape)
+    #     H = self.DLT_Size_solver.solve(resized_shift, size)
+    #     print("H:",H)
+    #     coarsealignment = Stitching_Domain_STN(torch.cat([or_input1, or_input2],dim=1), H, size, resized_shift)
+    #
+    #     # bs = net1_f.shape[0]
+    #     # device = net1_f.device
+    #     # patch_size = imgsz
+    #     # M = torch.FloatTensor([[patch_size / 2.0, 0., patch_size / 2.0],
+    #     #                        [0., patch_size / 2.0, patch_size / 2.0],
+    #     #                        [0., 0., 1.]]).to(device)
+    #     # M_inv = torch.linalg.inv(M)
+    #     # H1_mat = torch.bmm(torch.bmm(M_inv.expand(bs, -1, -1), H), M.expand(bs, -1, -1))
+    #     # feature2_warp = STN(input2, H1_mat)
+    #     # one = torch.ones_like(input2, dtype=torch.float32)
+    #     # one_warp_H1 = STN(one, H1_mat)
+    #     #
+    #     # warp = feature2_warp.squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
+    #     # warp_one = one_warp_H1.squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
+    #     # re_img1 = input1.squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
+    #     # I1 = re_img1 * warp_one
+    #     # I2 = warp * warp_one
+    #     #
+    #     # from skimage.metrics import structural_similarity as compare_ssim
+    #     # from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+    #     # psnr = compare_psnr(I1, I2, data_range=1)
+    #     # ssim = compare_ssim(I1, I2, data_range=1, channel_axis=2)
+    #     # print("psnr:",psnr," ssim:",ssim)
+    #     return coarsealignment
+
+    def output_H_estimator2(self,or_input1, or_input2,input1, input2,size,imgsz=512.):
+        net1_f, net2_f, net3_f = self.forward_once(input1, input2)
+        shift = net1_f + net2_f + net3_f
+
+        size = size.squeeze(0)
+        # print("size:",size.shape)
+        resized_shift = shift * size.repeat(4).reshape(1, 8, 1) / imgsz
+        imgs_raw = torch.cat((or_input1, or_input2), dim=1)
+        # print(imgs_raw.shape)
+        coarsealignment = Stitching_Domain_STN2(imgs_raw, size, resized_shift)
+        # print("coarsealignment:",coarsealignment.shape)
+        return coarsealignment
+
+    def forward(self,inputs_aug1,inputs_aug2, input1,inputs2, patch_size=512.):
         # inputs_aug1 = self.ShareFeature(inputs_aug1)
         # inputs_aug2 = self.ShareFeature(inputs_aug2)
         net1_f, net2_f, net3_f = self.forward_once(inputs_aug1, inputs_aug2)
